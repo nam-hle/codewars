@@ -79,7 +79,6 @@ export class EntrantDocuments {
       }
     });
     this.data[documentType] = documentInfo;
-    this.validate(documentType, documentInfo);
     return this;
   }
 
@@ -92,22 +91,57 @@ export class EntrantDocuments {
     return `${lastName} ${firstName}`;
   }
 
-  validate(documentType: string, documentInfo: DocumentInfo) {
-    if (documentInfo.exp && documentInfo.exp <= new Date(1982, 10, 22)) {
-      this.errors.push(`${documentType.replace('_', ' ')} expired`);
-    }
+  public getAllDocumentTypes(): string[] {
+    return Object.keys(this.data).map((e) => e.replace(/\_/g, ' '));
+  }
 
-    for (const currentDocument of Object.values(this.data)) {
-      for (const key of Object.keys(documentInfo)) {
-        if (Object.keys(currentDocument).includes(key)) {
-          if (stringify(currentDocument[key]) !== stringify(documentInfo[key])) {
-            if (key === 'exp') continue;
-            const s = key === 'id#' ? 'ID number' : key;
-            this.errors.push(`${s} mismatch`);
+  public getNation(): string {
+    const nation = this.data?.passport?.nation;
+    if (typeof nation !== 'string') {
+      return '';
+    }
+    return nation;
+  }
+
+  validateExpiredDate(documentType: string, documentInfo: DocumentInfo): void {
+    if (documentInfo.exp && documentInfo.exp <= new Date(1982, 10, 22)) {
+      this.errors.push(`${documentType.replace(/\_/g, ' ')} expired`);
+    }
+  }
+
+  validateDiplomatic(documentType: string, documentInfo: DocumentInfo): void {
+    if (documentType === DocumentKind.DIPLOMATIC_AUTHORIZATION) {
+      if (documentInfo.access && typeof documentInfo.access === 'string' && !documentInfo.access.split(',').includes('Arstotzka')) {
+        this.errors.push(`invalid ${documentType.replace('_', ' ')}`);
+      }
+    }
+  }
+
+  validate() {
+    for (let i = 0; i < Object.keys(this.data).length; i++) {
+      const documentType = Object.keys(this.data)[i];
+      const documentInfo = this.data[documentType];
+
+      for (let j = i + 1; j < Object.keys(this.data).length; j++) {
+        const currentDocument = this.data[Object.keys(this.data)[j]];
+        for (const key of Object.keys(documentInfo)) {
+          if (Object.keys(currentDocument).includes(key)) {
+            if (stringify(currentDocument[key]) !== stringify(documentInfo[key])) {
+              if (key === 'exp') continue;
+              let s = key;
+              if (key === 'id#') s = 'ID number';
+              if (key === 'nation') s = 'nationality';
+              this.errors.push(`${s} mismatch`);
+            }
           }
         }
       }
+
+      this.validateExpiredDate(documentType, documentInfo);
+      this.validateDiplomatic(documentType, documentInfo);
     }
+
+    return this;
   }
 
   static parse(s: string): Record<string, string | undefined> {
@@ -161,21 +195,34 @@ export class DocumentManager extends Manager {
   }
 
   public accept(entrantDocuments: EntrantDocuments) {
+    console.log('@@@', entrantDocuments.getAllDocumentTypes());
     for (const requirement of this.requirements) {
       const { subject, document } = requirement;
       if (DocumentManager.isTargetSubject(subject, entrantDocuments)) {
-        if (!Object.keys(entrantDocuments.data).includes(document)) {
+        if (!entrantDocuments.getAllDocumentTypes().includes(document)) {
+          if (
+            document === 'access permit' &&
+            (entrantDocuments.getAllDocumentTypes().includes('diplomatic authorization') ||
+              entrantDocuments.getAllDocumentTypes().includes('grant of asylum'))
+          ) {
+            continue;
+          }
           return `missing required ${document}`;
         }
-        return true;
       }
     }
-    throw new Error('Not implemented');
+    return true;
   }
 
   static isTargetSubject(subject: Subject, entrantDocuments: EntrantDocuments): boolean {
     if (subject.subjectType === SubjectType.OTHERS) {
       return subject.name === 'entrants';
+    }
+    if (subject.subjectType === SubjectType.FOREIGNERS) {
+      return entrantDocuments.getNation() !== 'Arstotzka';
+    }
+    if (subject.subjectType === SubjectType.CITIZENS) {
+      return subject.countries.includes(entrantDocuments.getNation());
     }
     throw new Error(`Unsupported subject type: ${stringify(subject)}`);
   }
@@ -268,6 +315,17 @@ export class VaccinationManager extends Manager {
   readonly data: Record<string, string[] | null> = {};
   constructor() {
     super('VaccinationManager');
+  }
+
+  public accept(entrantDocuments: EntrantDocuments): true | string {
+    for (const requirement of Object.values(this.data)) {
+      if (requirement && requirement.includes(entrantDocuments.getNation())) {
+        if (!entrantDocuments.getAllDocumentTypes().includes('certificate of vaccination')) {
+          return 'missing required certificate of vaccination';
+        }
+      }
+    }
+    return true;
   }
 
   public isEmpty(): boolean {
@@ -382,6 +440,7 @@ export class Inspector {
   criminalManager: CriminalManager;
   documentManager: DocumentManager;
 
+  bulletins: string[] = [];
   managers: Manager[] = [];
   debug = true;
   constructor() {
@@ -403,6 +462,7 @@ export class Inspector {
     console.log('===========================\n');
 
     bulletins.split('\n').forEach((bulletin) => {
+      this.bulletins.push(bulletin);
       if (bulletin.match(/vaccination/gi)) {
         this.vaccinationManager.add(bulletin);
       } else if (bulletin.match(/wanted/gi)) {
@@ -423,25 +483,37 @@ export class Inspector {
   inspect(documents: Record<string, string>): string {
     console.log('===========================');
     console.log(`\nInspect:\n${stringify(documents)}`);
-    console.log('Data: \n');
+    console.log('===========================');
+    console.log('Bulletins: \n');
+    console.log(this.bulletins.map((e) => `"${e}"`).join(',\n'));
+    console.log('\nData: \n');
     this.print();
     console.log('===========================\n');
     const entrantDocuments = new EntrantDocuments();
     for (const [documentKind, documentDetails] of Object.entries(documents)) {
       entrantDocuments.add(documentKind, documentDetails);
-      if (entrantDocuments.errors.length) {
-        const title = entrantDocuments.errors.some((e) => e.includes('mismatch')) ? 'Detainment' : 'Entry denied';
-        return `${title}: ${entrantDocuments.errors.join(', ')}.`;
-      }
     }
+
+    const criminalAcceptance = this.criminalManager.accept(entrantDocuments);
+    if (criminalAcceptance !== true) {
+      console.log(`Denied by CriminalManager: ${criminalAcceptance}`);
+      return `Detainment: ${criminalAcceptance}.`;
+    }
+
+    entrantDocuments.validate();
+    if (entrantDocuments.errors.length) {
+      const title = entrantDocuments.errors.some((e) => e.includes('mismatch')) ? 'Detainment' : 'Entry denied';
+      return `${title}: ${entrantDocuments.errors[0]}.`;
+    }
+
     for (const manager of this.managers) {
+      if (manager.name === 'CriminalManager') {
+        continue;
+      }
       const acceptance = manager.accept(entrantDocuments);
 
       if (acceptance !== true) {
         console.log(`Denied by ${manager.constructor.name}: ${acceptance}`);
-        if (manager.name === 'CriminalManager') {
-          return `Detainment: ${acceptance}.`;
-        }
         return `Entry denied: ${acceptance}.`;
       }
     }
