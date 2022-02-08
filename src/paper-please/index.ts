@@ -15,11 +15,11 @@ export class Manager {
   constructor(public name: string, public debugging: boolean = true) {}
 
   public accept(entrantDocuments: EntrantDocuments): true | string {
-    return true;
+    throw new Error('Not implemented');
   }
 
   public isEmpty(): boolean {
-    throw new Error('Method not implemented.');
+    throw new Error('Not implemented.');
   }
 
   public print(): void {
@@ -103,6 +103,14 @@ export class EntrantDocuments {
     return nation;
   }
 
+  public getVaccines(): string[] {
+    const vaccines = this.data?.certificate_of_vaccination?.vaccines;
+    if (vaccines && typeof vaccines === 'string') {
+      return vaccines.split(', ');
+    }
+    return [];
+  }
+
   validateExpiredDate(documentType: string, documentInfo: DocumentInfo): void {
     if (documentInfo.exp && documentInfo.exp <= new Date(1982, 10, 22)) {
       this.errors.push(`${documentType.replace(/\_/g, ' ')} expired`);
@@ -152,10 +160,6 @@ export class EntrantDocuments {
     }, {});
   }
 
-  public hasDocument(documentType: string): boolean {
-    return Object.keys(this.data).includes(documentType);
-  }
-
   public toString() {
     return stringify(this.data);
   }
@@ -195,7 +199,6 @@ export class DocumentManager extends Manager {
   }
 
   public accept(entrantDocuments: EntrantDocuments) {
-    console.log('@@@', entrantDocuments.getAllDocumentTypes());
     for (const requirement of this.requirements) {
       const { subject, document } = requirement;
       if (DocumentManager.isTargetSubject(subject, entrantDocuments)) {
@@ -312,16 +315,22 @@ export class CriminalManager extends Manager {
 }
 
 export class VaccinationManager extends Manager {
-  readonly data: Record<string, string[] | null> = {};
+  readonly data: Record<string, string[]> = {};
   constructor() {
     super('VaccinationManager');
   }
 
   public accept(entrantDocuments: EntrantDocuments): true | string {
-    for (const requirement of Object.values(this.data)) {
-      if (requirement && requirement.includes(entrantDocuments.getNation())) {
+    for (const [requiredVaccine, requiredCountries] of Object.entries(this.data)) {
+      if (
+        requiredCountries?.includes(entrantDocuments.getNation()) ||
+        (requiredCountries?.includes('Foreigners') && entrantDocuments.getNation() !== 'Arstotzka')
+      ) {
         if (!entrantDocuments.getAllDocumentTypes().includes('certificate of vaccination')) {
           return 'missing required certificate of vaccination';
+        }
+        if (!entrantDocuments.getVaccines().includes(requiredVaccine)) {
+          return 'missing required vaccination';
         }
       }
     }
@@ -334,30 +343,68 @@ export class VaccinationManager extends Manager {
 
   public add(bulletin: string) {
     super.add(bulletin);
-    const RequiredRegex = /Citizens of (.*) require (\w+) vaccination/gi;
-    let match = RequiredRegex.exec(bulletin);
-    if (match) {
-      const [_, countries, name] = match;
-      this.update(name, countries);
-    }
 
-    const RemoveRequirementRegex = /no longer require (\w+) vaccination/gi;
-    match = RemoveRequirementRegex.exec(bulletin);
+    const ForeignersRegex = /^Foreigners require ([\w\s]+) vaccination/gi;
+    let match = ForeignersRegex.exec(bulletin);
     if (match) {
       const [_, name] = match;
-      this.update(name, null);
+      this.update(name, FOREIGNERS, 'add');
+      return this;
     }
+
+    const ForeignersNoLongerRegex = /^Foreigners no longer require ([\w\s]+) vaccination/gi;
+    match = ForeignersNoLongerRegex.exec(bulletin);
+    if (match) {
+      const [_, name] = match;
+      this.update(name, FOREIGNERS, 'remove');
+      return this;
+    }
+
+    const RemoveRequirementRegex = /^Citizens of (.*) no longer require ([\w\s]+) vaccination/gi;
+    match = RemoveRequirementRegex.exec(bulletin);
+    if (match) {
+      const [_, countries, name] = match;
+      this.update(name, stringListToArray(countries) ?? [], 'remove');
+      return this;
+    }
+
+    const RequiredRegex = /^Citizens of (.*) require ([\w\s]+) vaccination/gi;
+    match = RequiredRegex.exec(bulletin);
+    if (match) {
+      const [_, countries, name] = match;
+      this.update(name, stringListToArray(countries) ?? [], 'add');
+      return this;
+    }
+
+    const EntrantNoLongerRegex = /Entrants no longer require ([\w\s]+) vaccination/gi;
+    match = EntrantNoLongerRegex.exec(bulletin);
+    if (match) {
+      const [_, name] = match;
+      this.update(name, NATIONS, 'remove');
+      return this;
+    }
+
+    const EntrantRegex = /Entrants require ([\w\s]+) vaccination/gi;
+    match = EntrantRegex.exec(bulletin);
+    if (match) {
+      const [_, name] = match;
+      this.update(name, NATIONS, 'add');
+      return this;
+    }
+
     return this;
   }
 
-  public update(vaccine: string, countries: string | null): void {
-    const countriesList = stringListToArray(countries);
-    const currentState = this.data[vaccine];
-    if (Array.isArray(currentState) && Array.isArray(countriesList)) {
-      currentState.push(...countriesList);
-      return;
+  public update(vaccine: string, countries: string[], type: 'add' | 'remove'): void {
+    this.data[vaccine] = this.data[vaccine] ?? [];
+    if (!Array.isArray(countries)) {
+      throw new Error('Invalid countries');
     }
-    this.data[vaccine] = countriesList;
+    if (type === 'add') {
+      this.data[vaccine] = this.data[vaccine].concat(countries).filter((v, i, a) => a.indexOf(v) === i);
+    } else if (type === 'remove') {
+      this.data[vaccine] = this.data[vaccine].filter((country) => !countries.includes(country));
+    }
   }
 
   public isRequired(vaccine: string, country: string): boolean {
@@ -377,6 +424,7 @@ export class VaccinationManager extends Manager {
 type Allowance = 'allow' | 'deny';
 
 export const NATIONS = ['Arstotzka', 'Antegria', 'Impor', 'Kolechia', 'Obristan', 'Republia', 'United Federation'];
+export const FOREIGNERS = ['Antegria', 'Impor', 'Kolechia', 'Obristan', 'Republia', 'United Federation'];
 
 export enum NationEnum {
   Arstotzka = 'Arstotzka',

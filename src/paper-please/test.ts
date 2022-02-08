@@ -55,11 +55,48 @@ describe('test', () => {
     const vaccinationBulletins = [
       'Citizens of Antegria, Republia, Obristan require polio vaccination',
       'Entrants no longer require tetanus vaccination',
+      'Citizens of Kolechia, Obristan require cholera vaccination',
+      'Citizens of Kolechia, Obristan no longer require cholera vaccination',
+      'Citizens of Antegria, Impor, Republia, Obristan require cowpox vaccination',
+      'Foreigners require yellow fever vaccination',
+      'Citizens of Antegria, Impor, Republia, Obristan require cowpox vaccination',
+      'Entrants require HPV vaccination',
     ];
     setup(new VaccinationManager(), vaccinationBulletins[0], {
       polio: ['Antegria', 'Republia', 'Obristan'],
     });
-    setup(new VaccinationManager(), vaccinationBulletins[1], { tetanus: null });
+    setup(new VaccinationManager(), vaccinationBulletins[1], { tetanus: [] });
+
+    setup(new VaccinationManager(), vaccinationBulletins[2], {
+      cholera: ['Kolechia', 'Obristan'],
+    });
+
+    setup(new VaccinationManager(), vaccinationBulletins[3], {
+      cholera: [],
+    });
+
+    setup(new VaccinationManager(), vaccinationBulletins[4], {
+      cowpox: ['Antegria', 'Impor', 'Republia', 'Obristan'],
+    });
+
+    setup(new VaccinationManager(), vaccinationBulletins[5], {
+      'yellow fever': ['Antegria', 'Impor', 'Kolechia', 'Obristan', 'Republia', 'United Federation'],
+    });
+
+    setup(new VaccinationManager(), vaccinationBulletins[6], {
+      cowpox: ['Antegria', 'Impor', 'Republia', 'Obristan'],
+    });
+
+    setup(new VaccinationManager(), vaccinationBulletins[7], {
+      HPV: ['Arstotzka', 'Antegria', 'Impor', 'Kolechia', 'Obristan', 'Republia', 'United Federation'],
+    });
+
+    expect(
+      new VaccinationManager()
+        .add('Citizens of Kolechia, Obristan require cholera vaccination')
+        .add('Citizens of Kolechia, Obristan no longer require cholera vaccination')
+        .serialize()
+    ).to.equal(stringify({ cholera: [] }));
   });
 
   it('Passport', () => {
@@ -96,7 +133,7 @@ describe('test', () => {
   });
 
   describe('main', () => {
-    function f(bulletins: string[], entrants: Record<string, string>, expected: string) {
+    function f(entrants: Record<string, string>, bulletins: string[], expected: string) {
       const inspector = new Inspector();
       inspector.receiveBulletin(bulletins.join('\n'));
       expect(inspector.inspect(entrants)).to.equal(expected);
@@ -161,6 +198,9 @@ describe('test', () => {
 
     it('test 1', () => {
       f(
+        {
+          passport: 'ID#: ZFPU9-QRIV9\nNATION: Impor\nNAME: Bennet, Ingrid\nDOB: 1960.05.07\nSEX: F\nISS: Tsunkeido\nEXP: 1981.01.01',
+        },
         [
           'Entrants require passport',
           'Allow citizens of Arstotzka',
@@ -168,14 +208,16 @@ describe('test', () => {
           'Allow citizens of Antegria, Impor, Kolechia, Obristan, Republia, United Federation',
           'Wanted by the State: Ingrid Bennet',
         ],
-        {
-          passport: 'ID#: ZFPU9-QRIV9\nNATION: Impor\nNAME: Bennet, Ingrid\nDOB: 1960.05.07\nSEX: F\nISS: Tsunkeido\nEXP: 1981.01.01',
-        },
         'Detainment: Entrant is a wanted criminal.'
       );
     });
     it('diplomatic_authorization', () => {
       f(
+        {
+          passport:
+            'ID#: XM3S1-DDMK1\nNATION: United Federation\nNAME: Vincenza, Aleksandra\nDOB: 1940.03.08\nSEX: F\nISS: Korista City\nEXP: 1983.02.05',
+          diplomatic_authorization: 'NATION: United Federation\nNAME: Vincenza, Aleksandra\nID#: XM3S1-DDMK1\nACCESS: Obristan',
+        },
         [
           'Entrants require passport',
           'Allow citizens of Arstotzka',
@@ -185,17 +227,15 @@ describe('test', () => {
           'Foreigners require access permit',
           'Wanted by the State: Anna Latva',
         ],
-        {
-          passport:
-            'ID#: XM3S1-DDMK1\nNATION: United Federation\nNAME: Vincenza, Aleksandra\nDOB: 1940.03.08\nSEX: F\nISS: Korista City\nEXP: 1983.02.05',
-          diplomatic_authorization: 'NATION: United Federation\nNAME: Vincenza, Aleksandra\nID#: XM3S1-DDMK1\nACCESS: Obristan',
-        },
         'Entry denied: invalid diplomatic authorization.'
       );
     });
 
     it('access_permit', () => {
       f(
+        {
+          passport: 'ID#: MLG3B-X9SOR\nNATION: Impor\nNAME: Yankov, Olga\nDOB: 1933.07.08\nSEX: F\nISS: Tsunkeido\nEXP: 1984.02.15',
+        },
         [
           'Entrants require passport',
           'Allow citizens of Arstotzka',
@@ -205,13 +245,16 @@ describe('test', () => {
           'Foreigners require access permit',
           'Wanted by the State: Karina David',
         ],
-        {
-          passport: 'ID#: MLG3B-X9SOR\nNATION: Impor\nNAME: Yankov, Olga\nDOB: 1933.07.08\nSEX: F\nISS: Tsunkeido\nEXP: 1984.02.15',
-        },
         'Entry denied: missing required access permit.'
       );
 
       f(
+        {
+          passport: 'ID#: K8J9U-DO7W5\nNATION: Republia\nNAME: Borshiki, Olec\nDOB: 1944.08.07\nSEX: M\nISS: True Glorian\nEXP: 1985.11.22',
+          access_permit:
+            'NAME: Borshiki, Olec\nNATION: Republia\nID#: K8J9U-DO7W5\nPURPOSE: WORK\nDURATION: 3 MONTHS\nHEIGHT: 149cm\nWEIGHT: 45kg\nEXP: 1985.07.09',
+          work_pass: 'NAME: Borshiki, Olec\nFIELD: Fishing\nEXP: 1984.09.28',
+        },
         [
           'Entrants require passport',
           'Allow citizens of Arstotzka',
@@ -221,15 +264,14 @@ describe('test', () => {
           'Foreigners require access permit',
           'Wanted by the State: Michaela Zajak',
         ],
-        {
-          passport: 'ID#: K8J9U-DO7W5\nNATION: Republia\nNAME: Borshiki, Olec\nDOB: 1944.08.07\nSEX: M\nISS: True Glorian\nEXP: 1985.11.22',
-          access_permit:
-            'NAME: Borshiki, Olec\nNATION: Republia\nID#: K8J9U-DO7W5\nPURPOSE: WORK\nDURATION: 3 MONTHS\nHEIGHT: 149cm\nWEIGHT: 45kg\nEXP: 1985.07.09',
-          work_pass: 'NAME: Borshiki, Olec\nFIELD: Fishing\nEXP: 1984.09.28',
-        },
         `Cause no trouble.`
       );
       f(
+        {
+          passport: 'ID#: L1HL5-J4VHJ\nNATION: Obristan\nNAME: Watson, Vasily\nDOB: 1933.06.06\nSEX: M\nISS: Mergerous\nEXP: 1982.12.28',
+          grant_of_asylum:
+            'NAME: Watson, Vasily\nNATION: Obristan\nID#: L1HL5-J4VHJ\nDOB: 1933.06.06\nHEIGHT: 189cm\nWEIGHT: 104kg\nEXP: 1985.10.09',
+        },
         [
           'Entrants require passport',
           'Allow citizens of Arstotzka',
@@ -242,17 +284,19 @@ describe('test', () => {
           'Deny citizens of United Federation',
           'Wanted by the State: Stanislav Andrevska',
         ],
-        {
-          passport: 'ID#: L1HL5-J4VHJ\nNATION: Obristan\nNAME: Watson, Vasily\nDOB: 1933.06.06\nSEX: M\nISS: Mergerous\nEXP: 1982.12.28',
-          grant_of_asylum:
-            'NAME: Watson, Vasily\nNATION: Obristan\nID#: L1HL5-J4VHJ\nDOB: 1933.06.06\nHEIGHT: 189cm\nWEIGHT: 104kg\nEXP: 1985.10.09',
-        },
         `Cause no trouble.`
       );
     });
 
     it('order error document', () => {
       f(
+        {
+          passport:
+            'ID#: DEK80-GGK81\nNATION: Republia\nNAME: Burke, Stanislav\nDOB: 1920.03.18\nSEX: M\nISS: True Glorian\nEXP: 1981.11.11',
+          access_permit:
+            'NAME: Burke, Stanislav\nNATION: Republia\nID#: LOT77-ZPL51\nPURPOSE: WORK\nDURATION: 6 MONTHS\nHEIGHT: 181cm\nWEIGHT: 93kg\nEXP: 1983.12.27',
+          work_pass: 'NAME: Burke, Stanislav\nFIELD: Dentistry\nEXP: 1982.12.30',
+        },
         [
           'Entrants require passport',
           'Allow citizens of Arstotzka',
@@ -262,19 +306,18 @@ describe('test', () => {
           'Foreigners require access permit',
           'Wanted by the State: Elena Klass',
         ],
-        {
-          passport:
-            'ID#: DEK80-GGK81\nNATION: Republia\nNAME: Burke, Stanislav\nDOB: 1920.03.18\nSEX: M\nISS: True Glorian\nEXP: 1981.11.11',
-          access_permit:
-            'NAME: Burke, Stanislav\nNATION: Republia\nID#: LOT77-ZPL51\nPURPOSE: WORK\nDURATION: 6 MONTHS\nHEIGHT: 181cm\nWEIGHT: 93kg\nEXP: 1983.12.27',
-          work_pass: 'NAME: Burke, Stanislav\nFIELD: Dentistry\nEXP: 1982.12.30',
-        },
         `Detainment: ID number mismatch.`
       );
     });
 
     it('vaccine', () => {
       f(
+        {
+          passport: 'ID#: EF69H-MFV7F\nNATION: Impor\nNAME: Kravitz, Sven\nDOB: 1937.02.08\nSEX: M\nISS: Tsunkeido\nEXP: 1984.05.11',
+          access_permit:
+            'NAME: Kravitz, Sven\nNATION: Impor\nID#: EF69H-MFV7F\nPURPOSE: WORK\nDURATION: 1 MONTH\nHEIGHT: 185cm\nWEIGHT: 98kg\nEXP: 1984.07.13',
+          work_pass: 'NAME: Kravitz, Sven\nFIELD: Surveying\nEXP: 1985.11.17',
+        },
         [
           'Entrants require passport',
           'Allow citizens of Arstotzka',
@@ -297,16 +340,14 @@ describe('test', () => {
           'Deny citizens of Obristan',
           'Wanted by the State: Gregory Lindberg',
         ],
-        {
-          passport: 'ID#: EF69H-MFV7F\nNATION: Impor\nNAME: Kravitz, Sven\nDOB: 1937.02.08\nSEX: M\nISS: Tsunkeido\nEXP: 1984.05.11',
-          access_permit:
-            'NAME: Kravitz, Sven\nNATION: Impor\nID#: EF69H-MFV7F\nPURPOSE: WORK\nDURATION: 1 MONTH\nHEIGHT: 185cm\nWEIGHT: 98kg\nEXP: 1984.07.13',
-          work_pass: 'NAME: Kravitz, Sven\nFIELD: Surveying\nEXP: 1985.11.17',
-        },
         `Entry denied: missing required certificate of vaccination.`
       );
 
       f(
+        {
+          passport: 'ID#: FNP84-S2JCD\nNATION: Arstotzka\nNAME: Ortiz, Katherine\nDOB: 1951.12.13\nSEX: F\nISS: Paradizna\nEXP: 1982.12.25',
+          ID_card: 'NAME: Ortiz, Katherine\nDOB: 1951.12.13\nHEIGHT: 159cm\nWEIGHT: 61kg',
+        },
         [
           'Entrants require passport',
           'Allow citizens of Arstotzka',
@@ -327,11 +368,146 @@ describe('test', () => {
           'Workers require work pass',
           'Wanted by the State: Nikolai Borshiki',
         ],
-        {
-          passport: 'ID#: FNP84-S2JCD\nNATION: Arstotzka\nNAME: Ortiz, Katherine\nDOB: 1951.12.13\nSEX: F\nISS: Paradizna\nEXP: 1982.12.25',
-          ID_card: 'NAME: Ortiz, Katherine\nDOB: 1951.12.13\nHEIGHT: 159cm\nWEIGHT: 61kg',
-        },
         `Glory to Arstotzka.`
+      );
+
+      f(
+        {
+          passport: 'ID#: YES87-HP4U8\nNATION: Impor\nNAME: Latva, Wilma\nDOB: 1916.10.17\nSEX: F\nISS: Enkyo\nEXP: 1985.05.24',
+          access_permit:
+            'NAME: Latva, Wilma\nNATION: Impor\nID#: YES87-HP4U8\nPURPOSE: VISIT\nDURATION: 14 DAYS\nHEIGHT: 145cm\nWEIGHT: 40kg\nEXP: 1983.12.25',
+          certificate_of_vaccination: 'NAME: Latva, Wilma\nID#: YES87-HP4U8\nVACCINES: cholera, HPV, rubella',
+        },
+        [
+          'Entrants require passport',
+          'Allow citizens of Arstotzka',
+          'Wanted by the State: Alek Hertzog',
+          'Allow citizens of Antegria, Impor, Kolechia, Obristan, Republia, United Federation',
+          'Wanted by the State: Galina Dvorkin',
+          'Foreigners require access permit',
+          'Wanted by the State: Yvonna Mateo',
+          'Citizens of Arstotzka require ID card',
+          'Deny citizens of Obristan',
+          'Wanted by the State: Lazlo Klaus',
+          'Allow citizens of Obristan',
+          'Deny citizens of United Federation',
+          'Wanted by the State: Josefina Jensen',
+          'Allow citizens of United Federation',
+          'Deny citizens of Republia',
+          'Citizens of Republia, Kolechia require typhus vaccination',
+          'Workers require work pass',
+          'Wanted by the State: Vilhelm Kierkgaard',
+          'Allow citizens of Republia',
+          'Deny citizens of Obristan',
+          'Wanted by the State: Aron Khan',
+          'Allow citizens of Obristan',
+          'Deny citizens of Kolechia',
+          'Wanted by the State: Mikkel Novak',
+          'Allow citizens of Kolechia',
+          'Deny citizens of Impor',
+          'Citizens of Republia, Kolechia no longer require typhus vaccination',
+          'Citizens of Republia, Impor require tetanus vaccination',
+          'Wanted by the State: Gabriela Karlsson',
+          'Allow citizens of Impor',
+          'Deny citizens of Republia',
+          'Wanted by the State: Jessica Kaczynska',
+        ],
+        `Entry denied: missing required vaccination.`
+      );
+    });
+
+    it('vaccines 2', () => {
+      f(
+        {
+          passport: 'ID#: TXT68-L9J6M\nNATION: Impor\nNAME: Frank, Vadim\nDOB: 1941.02.18\nSEX: M\nISS: Tsunkeido\nEXP: 1984.01.27',
+          grant_of_asylum:
+            'NAME: Frank, Vadim\nNATION: Impor\nID#: TXT68-L9J6M\nDOB: 1941.02.18\nHEIGHT: 162cm\nWEIGHT: 64kg\nEXP: 1985.03.05',
+        },
+        [
+          'Entrants require passport',
+          'Allow citizens of Arstotzka',
+          'Wanted by the State: Yulia Levine',
+          'Allow citizens of Antegria, Impor, Kolechia, Obristan, Republia, United Federation',
+          'Wanted by the State: Ava Quinn',
+          'Foreigners require access permit',
+          'Wanted by the State: Vadim Strauss',
+          'Citizens of Arstotzka require ID card',
+          'Deny citizens of Impor',
+          'Wanted by the State: Gustav Vincenza',
+          'Allow citizens of Impor',
+          'Deny citizens of Kolechia',
+          'Wanted by the State: Adam Owsianka',
+          'Allow citizens of Kolechia',
+          'Deny citizens of Impor',
+          'Citizens of Kolechia, Obristan require cholera vaccination',
+          'Wanted by the State: Mathias Pearl',
+          'Allow citizens of Impor',
+          'Deny citizens of Republia',
+          'Wanted by the State: Roman Zitna',
+          'Allow citizens of Republia',
+          'Deny citizens of Obristan',
+          'Citizens of Kolechia, Obristan no longer require cholera vaccination',
+          'Citizens of Antegria, Impor, Republia, Obristan require cowpox vaccination',
+          'Wanted by the State: Artour Popovic',
+          'Allow citizens of Obristan',
+          'Deny citizens of Impor',
+          'Wanted by the State: Sergei Olah',
+          'Allow citizens of Impor',
+          'Deny citizens of Obristan',
+          'Wanted by the State: Mila Gregorovich',
+          'Allow citizens of Obristan',
+          'Deny citizens of Kolechia',
+          'Workers require work pass',
+          'Wanted by the State: Tomas Anderson',
+          'Allow citizens of Kolechia',
+          'Deny citizens of Republia',
+          'Citizens of Antegria, Impor, Republia, Obristan no longer require cowpox vaccination',
+          'Foreigners require yellow fever vaccination',
+          'Wanted by the State: Lorena Lukowski',
+        ],
+        `Entry denied: missing required certificate of vaccination.`
+      );
+    });
+
+    it('vaccines 3', () => {
+      f(
+        {
+          passport:
+            'ID#: V7IA9-GJ90B\nNATION: Antegria\nNAME: Kierkgaard, Sarah\nDOB: 1948.07.26\nSEX: F\nISS: St. Marmero\nEXP: 1985.12.05',
+          grant_of_asylum:
+            'NAME: Kierkgaard, Sarah\nNATION: Antegria\nID#: V7IA9-GJ90B\nDOB: 1948.07.26\nHEIGHT: 151cm\nWEIGHT: 49kg\nEXP: 1985.02.12',
+        },
+        [
+          'Entrants require passport',
+          'Allow citizens of Arstotzka',
+          'Wanted by the State: James Costa',
+          'Allow citizens of Antegria, Impor, Kolechia, Obristan, Republia, United Federation',
+          'Wanted by the State: Ana Costanzo',
+          'Foreigners require access permit',
+          'Wanted by the State: Mila Malkova',
+          'Citizens of Arstotzka require ID card',
+          'Deny citizens of Kolechia',
+          'Wanted by the State: Beatrix Reyes',
+          'Allow citizens of Kolechia',
+          'Deny citizens of Obristan',
+          'Wanted by the State: Jan Karlsson',
+          'Allow citizens of Obristan',
+          'Deny citizens of Antegria',
+          'Foreigners require yellow fever vaccination',
+          'Wanted by the State: Ivana Frederikson',
+          'Allow citizens of Antegria',
+          'Deny citizens of Republia',
+          'Wanted by the State: Beatrix Harkonnen',
+          'Allow citizens of Republia',
+          'Deny citizens of Antegria',
+          'Wanted by the State: Kascha DeGraff',
+          'Allow citizens of Antegria',
+          'Deny citizens of Kolechia',
+          'Foreigners no longer require yellow fever vaccination',
+          'Entrants require HPV vaccination',
+          'Wanted by the State: Andre Grech',
+        ],
+        `Entry denied: missing required certificate of vaccination.`
       );
     });
   });
